@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+data/
+*.log
+
+# Configurations personnelles et identifiants des outils
+.claude/
+.claude.json
+.mcp.json
+.codex/
+.agents/
+.codegraph/
+*.pem
+*.key
+
+# Captures locales de developpement, hors documentation publique
+/*.png

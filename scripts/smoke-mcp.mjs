@@ -1,0 +1,8 @@
+// Test réel facultatif : un appel Claude Code à un MCP local factice, sans données externes.
+import {query,tool,createSdkMcpServer} from '@anthropic-ai/claude-agent-sdk';import {sdkOptions} from '../server/integrations.js';import {ApprovalQueue,createToolGuard} from '../server/approvals.js';import assert from 'node:assert/strict';
+const state={agents:[{id:'test',name:'Test'}],integrations:{enabled:['fixture']}};const approvals=new ApprovalQueue(),guard=createToolGuard({state,agentId:'test',taskId:'smoke',approvals});let approved=false,calls=0;
+const fixture=createSdkMcpServer({name:'fixture',version:'1.0.0',tools:[tool('ping','Test local sans effet externe.',{},async()=>{assert.ok(approved,'Le MCP ne doit pas être appelé avant la validation');calls++;return {content:[{type:'text',text:'pong'}]};})]});
+const timer=setInterval(()=>{for(const request of approvals.list()){approved=true;approvals.decide(request.id,true);}},50);
+const abortController=new AbortController(),limit=setTimeout(()=>abortController.abort(),90000);
+const session=query({prompt:'Appelle exactement une fois le MCP fixture ping, puis réponds uniquement avec le résultat. Il s’agit d’un test local sans effet externe.',options:sdkOptions({systemPrompt:'Utilise uniquement le MCP ping pour ce test.',mcpServers:{fixture},strictMcpConfig:true,model:'sonnet',maxTurns:4,abortController,...guard})});
+try{for await(const message of session)if(message.type==='result'){if(message.is_error)throw Error('Le test Claude a échoué');console.log(message.result);}assert.equal(calls,1);console.log('MCP local exécuté une seule fois, après validation uniquement.');}finally{clearInterval(timer);clearTimeout(limit);session.close();}
