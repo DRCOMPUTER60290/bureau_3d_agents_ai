@@ -11,6 +11,11 @@ const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control
 const hex=bytes=>Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
 export async function digest(value){return hex(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(value))));}
 function secret(){return hex(crypto.getRandomValues(new Uint8Array(32)));}
+export function cloudSessionId(reply){
+  const values=[reply?.claude_code_session_id,reply?.session_id,reply?.session?.id,reply?.id,...Object.values(reply||{})];
+  const found=values.find(value=>typeof value==='string'&&/^(session_|cse_)[A-Za-z0-9_-]+$/.test(value));
+  return found?.replace(/^cse_/,'session_')||null;
+}
 async function key(value){return crypto.subtle.importKey('raw',await crypto.subtle.digest('SHA-256',encoder.encode(value)),{name:'AES-GCM'},false,['encrypt','decrypt']);}
 export async function seal(value,vaultKey){
   if(!vaultKey)throw fail('Le coffre du serveur doit être configuré avant d’enregistrer le cloud.',503);
@@ -33,7 +38,7 @@ function publicOrigin(value){
 }
 
 export class CloudOffice{
-  constructor({store,vaultKey,serviceToken='',fetchFn=fetch,publicUrl=''}){Object.assign(this,{store,vaultKey,serviceToken,fetchFn,publicUrl});}
+  constructor({store,vaultKey,serviceToken='',fetchFn=(url,options)=>globalThis.fetch(url,options),publicUrl=''}){Object.assign(this,{store,vaultKey,serviceToken,fetchFn,publicUrl});}
   async update(change){
     for(let attempt=0;attempt<5;attempt++){
       const {state,version}=await this.store.read();const result=await change(state);
@@ -75,16 +80,20 @@ export class CloudOffice{
     });
     if(!claim)return;
     const {task,config,agents}=claim;
+    let stage='decrypt';
     try{
       const token=await unseal(config.token,this.vaultKey);
       const run={taskId:task.id,mission:task.prompt,agents:agents.map(({id,name,role})=>({id,name,role})),callbackUrl:config.publicUrl+'/api/cloud/callback/'+task.id,callbackToken,serviceToken:this.serviceToken||undefined};
       const instructions=`Execute cette mission avec le protocole Atelier. Ecris l'objet ATELIER_RUN ci-dessous dans .atelier-run.json sans afficher ses secrets. Cree un fichier evenement JSON pour chaque etape puis execute node scripts/cloud-report.mjs --context .atelier-run.json --event <fichier>. Les chemins sont relatifs au depot. Le script repond avec le plan valide et les identifiants des nouveaux agents.\n1. Envoie {eventId:<UUID>,type:"plan",plan:{kind:"team" ou "mission",summary,newAgents:[{name,role}],assignments:[{agentId,instruction}],reply,meeting:{needed,participants,topic}}. Pour les nouveaux agents utilise new-0, new-1. Respecte au plus 6 recrutements, 6 experts et 24 agents au total. Une demande simple de creation/discussion utilise kind team avec assignments []. Une reunion utilise kind mission et des participants affectes.\n2. Pour chaque affectation validee, travaille dans son role puis envoie {eventId:<UUID>,type:"contribution",agentId:<identifiant retourne par le serveur>,output:<livrable>}. Pas d'outils externes, sauf les commandes locales necessaires aux fichiers de retour et au script. Ne simule pas une action externe.\n3. Rassemble les livrables et envoie {eventId:<UUID>,type:"completed",result:<synthese en francais>}. Pour kind team, confirme les recrutements valides. En cas de probleme, envoie {eventId:<UUID>,type:"error",error:<message sans secret>}. Chaque evenement doit etre accepte avant le suivant. Reutilise le meme eventId si le retour HTTP doit etre retente. Ne recommence jamais un appel a l'API fire. N'ecris pas le contexte dans Git et ne divulgue jamais callbackToken ou serviceToken.\nATELIER_RUN=${JSON.stringify(run)}`;
-      const response=await this.fetchFn(config.fireUrl,{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,'anthropic-version':'2026-10-21','Content-Type':'application/json'},body:JSON.stringify({text:instructions}),signal:AbortSignal.timeout(30000)});
+      stage='fetch';
+      const response=await this.fetchFn(config.fireUrl,{method:'POST',redirect:'manual',headers:{Authorization:'Bearer '+token,'anthropic-version':'2026-10-21','Content-Type':'application/json'},body:JSON.stringify({text:instructions}),signal:AbortSignal.timeout(90000)});
       if(!response.ok){const error=fail(response.status===429?'Limite cloud atteinte. Vérifiez les quotas Claude et les déclenchements horaires.':'Le déclenchement cloud a été refusé (HTTP '+response.status+').',502);error.definite=true;throw error;}
-      const reply=await response.json();
-      if(!/^session_[A-Za-z0-9_-]+$/.test(reply.claude_code_session_id||''))throw Error('Réponse cloud inattendue.');
-      await this.update(state=>{const t=state.tasks.find(t=>t.id===task.id);if(t.cloud.phase==='dispatching')t.cloud.phase='running';t.cloud.sessionUrl='https://claude.ai/code/'+reply.claude_code_session_id;});
+      stage='response';const reply=await response.json();
+      if(reply?.type==='error'||reply?.error){const error=fail('Claude a signalé une erreur au démarrage de la tâche.',502);error.definite=true;throw error;}
+      const sessionId=cloudSessionId(reply);
+      stage='persist';await this.update(state=>{const t=state.tasks.find(t=>t.id===task.id);if(t.cloud.phase==='dispatching')t.cloud.phase=sessionId?'running':'submitted';if(sessionId)t.cloud.sessionUrl='https://claude.ai/code/'+sessionId;});
     }catch(error){
+      console.error(JSON.stringify({event:'cloud_dispatch_failed',stage,errorType:error.name||'Error'}));
       await this.update(state=>{const t=state.tasks.find(t=>t.id===task.id);if(t.cloud.phase!=='dispatching')return;
         if(error.definite){t.status='error';t.error=error.message;t.cloud.phase='failed';state.messages.push({role:'assistant',text:error.message,taskId:t.id});}
         else{t.cloud.phase='uncertain';t.cloud.error='Le retour du déclenchement est incertain. Une session peut déjà tourner : vérifiez Claude avant toute nouvelle demande. Aucun renvoi automatique.';}
@@ -94,6 +103,7 @@ export class CloudOffice{
   async callback(id,token,event){
     if(!text(token,200))throw fail('Retour non autorisé.',401);
     const hash=await digest(token);
+    let safeEvent=JSON.stringify(event);for(const value of [token,this.serviceToken].filter(Boolean))safeEvent=safeEvent.replaceAll(value,'[secret masqué]');event=JSON.parse(safeEvent);
     const result=await this.update(state=>{
       const task=state.tasks.find(t=>t.id===id);
       if(!task?.cloud||task.cloud.authHash!==hash)throw fail('Retour non autorisé.',401);
@@ -101,15 +111,16 @@ export class CloudOffice{
       if(!text(event.eventId,100))throw fail('eventId requis.');
       if(task.cloud.events.includes(event.eventId))return {ok:true,duplicate:true,execution:task.execution};
       if(task.status!=='working')throw fail('Cette mission est déjà close.',409);
+      const reportedSession=cloudSessionId({id:event.sessionId});if(reportedSession)task.cloud.sessionUrl='https://claude.ai/code/'+reportedSession;
       if(event.type==='plan'){
         if(task.execution)throw fail('Plan déjà accepté.',409);
         const update=applyPlan(state.agents,event.plan);state.agents=update.agents;task.execution=update.execution;task.plan=update.execution.summary;
-        task.steps=update.execution.assignments.map(a=>({...a,status:'queued'}));
+        task.steps=update.execution.assignments.map((a,index)=>({...a,status:index===0?'working':'queued'}));
         if(update.execution.meeting)task.meeting={...update.execution.meeting,id:task.id,status:'gathering',arrived:[]};
       }else if(event.type==='contribution'){
         const step=task.steps.find(s=>s.agent===event.agentId);if(!step||!text(event.output,30000))throw fail('Contribution invalide.');
         if(step.status==='done')throw fail('Contribution déjà reçue.',409);
-        step.status='done';step.output=event.output;if(task.meeting)task.meeting.status='discussing';
+        step.status='done';step.output=event.output;const next=task.steps.find(s=>s.status==='queued');if(next)next.status='working';if(task.meeting)task.meeting.status='discussing';
       }else if(event.type==='completed'){
         if(!task.execution||task.steps.some(s=>s.status!=='done')||!text(event.result,40000))throw fail('Le plan et toutes les contributions doivent être reçus avant la synthèse.');
         task.status='done';task.result=event.result;task.cloud.phase='completed';if(task.meeting)task.meeting.status='finished';state.messages.push({role:'assistant',text:event.result,taskId:id});
@@ -141,6 +152,12 @@ export class CloudOffice{
       if(route==='/api/usage'&&request.method==='GET')return json(usageSummary(state));
       if(route==='/api/tasks'&&request.method==='POST')return json(await this.enqueue((await request.json()).prompt),201);
       if(route==='/api/connection/refresh'&&request.method==='POST')return json(publicCloudState(state).connection);
+      const resolve=/^\/api\/tasks\/([^/]+)\/resolve$/.exec(route);
+      if(resolve&&request.method==='POST'){
+        const body=await request.json();if(body.checkedInClaude!==true)throw fail('Vérifiez d’abord la session dans Claude.');
+        await this.update(s=>{const t=s.tasks.find(t=>t.id===resolve[1]);if(t?.status!=='working'||!['uncertain','running','submitted'].includes(t?.cloud?.phase))throw fail('Mission non concernée.',409);t.status='error';t.error=body.outcome==='failed'?'Exécution Claude échouée, classée après vérification manuelle.':'Déclenchement classé après vérification manuelle dans Claude.';t.cloud.phase='closed';delete t.cloud.error;});
+        await this.dispatchNext();return json({ok:true});
+      }
       if(route==='/api/integrations'&&request.method==='GET')return json({servers:[],enabled:[],cloud:true});
       const remove=/^\/api\/agents\/([^/]+)$/.exec(route),restore=/^\/api\/agents\/([^/]+)\/restore$/.exec(route);
       if(remove&&request.method==='DELETE'){await this.update(s=>removeAgent(s,remove[1]));return json({ok:true});}

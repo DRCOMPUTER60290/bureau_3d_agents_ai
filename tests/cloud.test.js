@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CloudOffice,freshState,publicCloudState,digest} from '../server/cloud-core.js';
+import {CloudOffice,freshState,publicCloudState,digest,cloudSessionId} from '../server/cloud-core.js';
 import {recordUsage,usageSummary,normalizeLimits} from '../server/usage.js';
 import {readAccountUsage} from '../server/usage-reader.js';
 import {transcriptTokens,report} from '../scripts/cloud-report.mjs';
@@ -40,6 +40,26 @@ test('un declenchement incertain ne repasse jamais automatiquement par fire et c
   await office.enqueue('Mission');await office.dispatchNext();await office.enqueue('Mission suivante');
   assert.equal(requests,1);const state=(await store.read()).state;
   assert.equal(state.tasks[0].cloud.phase,'uncertain');assert.equal(state.tasks[1].status,'queued');
+});
+test('le fetch natif est appele avec son recepteur global et une tentative incertaine exige une verification manuelle',async()=>{
+  const native=globalThis.fetch;let calls=0;
+  globalThis.fetch=function(){assert.equal(this,globalThis);calls++;return Promise.resolve(Response.json({claude_code_session_id:'session_test'}));};
+  try{
+    const store=memory(),office=new CloudOffice({store,vaultKey:'test'});await office.configure(config);await office.enqueue('Mission');assert.equal(calls,1);
+    await office.update(s=>{s.tasks[0].cloud.phase='uncertain';});
+    const id=(await store.read()).state.tasks[0].id;
+    const rejected=await office.handle(new Request('https://office.example/api/tasks/'+id+'/resolve',{method:'POST',body:'{}'}),{authenticated:true});assert.equal(rejected.status,400);
+    const accepted=await office.handle(new Request('https://office.example/api/tasks/'+id+'/resolve',{method:'POST',body:JSON.stringify({checkedInClaude:true})}),{authenticated:true});assert.equal(accepted.status,200);assert.equal(calls,1);
+  }finally{globalThis.fetch=native;}
+});
+test('les redirections ne transmettent jamais le jeton de routine vers une autre adresse',async()=>{
+  let calls=0;const {store,office}=await setup(async(_url,options)=>{calls++;assert.equal(options.redirect,'manual');return new Response(null,{status:302,headers:{Location:'https://other.example'}});});
+  await office.enqueue('Mission');assert.equal(calls,1);assert.equal((await store.read()).state.tasks[0].status,'error');
+});
+test('les identifiants cloud cse et les réponses asynchrones sans identifiant ne deviennent pas de faux échecs',async()=>{
+  assert.equal(cloudSessionId({claude_code_session_id:'cse_test'}),'session_test');
+  const {store,office}=await setup(async()=>Response.json({type:'routine_fire',accepted:true}));await office.enqueue('Mission');
+  assert.equal((await store.read()).state.tasks[0].cloud.phase,'submitted');
 });
 test('les mises à jour concurrentes ne perdent pas de missions et les callbacks exigent une autorisation',async()=>{
   const {store,office}=await setup();

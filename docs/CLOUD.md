@@ -17,12 +17,11 @@ Le site est privé et protégé par la connexion ChatGPT de son propriétaire. L
 3. Copier les instructions proposées dans les réglages du bureau hébergé. Sans contexte `ATELIER_RUN`, la tâche doit s’arrêter.
 4. Retirer les connecteurs du brouillon de cette tâche. Les missions cloud de cette version sont textuelles ; les autorisations locales ne sont pas reproduites.
 5. Utiliser un environnement dédié avec accès réseau limité au domaine HTTPS du bureau, à `api.anthropic.com` et aux gestionnaires de paquets nécessaires. Ne pas ouvrir tout le réseau pour contourner une erreur.
-6. Configurer le script de démarrage du dépôt :
+6. Garder un script de démarrage minimal : les scripts d’environnement ne partent pas nécessairement du dossier du dépôt. Nora installera les dépendances depuis le dépôt, après son démarrage.
 
 ```bash
 #!/bin/bash
-set -e
-npm ci --ignore-scripts --no-audit --no-fund
+true
 ```
 
 7. Enregistrer la tâche et copier son **URL Fire** et son **jeton**. Le jeton n’est affiché qu’une fois ; un remplacement invalide l’ancien.

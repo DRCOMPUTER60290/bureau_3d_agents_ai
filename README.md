@@ -171,6 +171,8 @@ Après installation des prérequis et dépendances, double-cliquez sur **[Lancer
 
 Le lanceur vérifie les prérequis et le port, compile le visuel si nécessaire, démarre le serveur et ouvre votre navigateur par défaut dès que le bureau répond. Si le bureau est déjà lancé, il ouvre simplement son adresse. Une erreur reste affichée dans sa fenêtre.
 
+Si `ATELIER_CLOUD_URL` est renseigné dans `.env`, le lanceur ouvre directement ce bureau hébergé et ne démarre aucun serveur local. Pour forcer le mode local : `node scripts/launch.mjs --local`.
+
 **Gardez la fenêtre qui exécute le serveur ouverte.** `Ctrl+C` ou sa fermeture arrête ce serveur. Fermer seulement le navigateur laisse le serveur traiter la file. Le lanceur ne configure ni le démarrage automatique de Windows ni la désactivation de la veille.
 
 Pour lancer sans ouverture du navigateur :

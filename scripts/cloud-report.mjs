@@ -37,6 +37,8 @@ export async function report(context,event,{fetchFn=fetch}={}){
   const url=new URL(context.callbackUrl);
   if(url.protocol!=='https:'||url.username||url.password)throw Error('Retour HTTPS requis.');
   // Ces secrets ne peuvent pas devenir des livrables ou des erreurs affiches.
+  const remoteSession=process.env.CLAUDE_CODE_REMOTE_SESSION_ID;
+  if(remoteSession&&/^(cse_|session_)[A-Za-z0-9_-]+$/.test(remoteSession))event={...event,sessionId:remoteSession};
   let serialized=JSON.stringify(event);
   for(const value of [context.callbackToken,context.serviceToken].filter(Boolean))serialized=serialized.replaceAll(value,'[secret masqué]');
   const response=await fetchFn(url,{method:'POST',redirect:'error',headers:{'Content-Type':'application/json',Authorization:'Bearer '+context.callbackToken,...(context.serviceToken?{'OAI-Sites-Authorization':'Bearer '+context.serviceToken}:{})},body:serialized,signal:AbortSignal.timeout(45000)});

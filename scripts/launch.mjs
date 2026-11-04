@@ -69,6 +69,12 @@ async function build(){
 try{
   console.log('ATELIER AGENTS - Lancement du bureau IA\n');
   try{await import('dotenv/config');}catch{throw new Error('Dependances absentes. Ouvrez un terminal dans ce dossier et executez npm install.');}
+  if(process.env.ATELIER_CLOUD_URL&&!process.argv.includes('--local')){
+    const cloud=new URL(process.env.ATELIER_CLOUD_URL);
+    if(cloud.protocol!=='https:'||cloud.username||cloud.password||cloud.search||cloud.hash)throw new Error('ATELIER_CLOUD_URL doit etre une adresse HTTPS sans identifiant.');
+    console.log('Ouverture du bureau heberge. Aucun serveur local necessaire.');
+    await openBrowser(cloud.href);
+  }else{
   const port=Number(process.env.PORT)||3001;
   if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Le PORT configure doit etre compris entre 1 et 65535.');
   const url='http://127.0.0.1:'+port;
@@ -112,6 +118,7 @@ try{
       await openBrowser(url);
       await stopped;
     }
+  }
   }
 }catch(error){
   console.error('\nImpossible de lancer le bureau : '+error.message);
