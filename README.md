@@ -8,8 +8,42 @@ Le moteur IA utilise **le compte Claude connecté à Claude Code**, avec les lim
 
 Pour demander à Claude Code de vérifier ou configurer cette connexion, utilise le [prompt de configuration cloud prêt à copier](PROMPT_CONFIGURATION_CLAUDE_CLOUD.md).
 
+![Bureau 3D Atelier avec open space, salon et déplacements des agents autour de la table de réunion](docs/images/bureau-3d.png)
+
+## Captures d’écran
+
+Ces captures présentent le bureau pendant le développement du mode local. Elles illustrent l’open space, les déplacements, le chat et la gestion de l’équipe. Le panneau MCP ci-dessous concerne le mode local ; les missions cloud de cette version restent textuelles.
+
+<details>
+<summary>Interface complète et chat avec Nora</summary>
+
+Le bureau et les profils de l’équipe restent visibles pendant les échanges avec Nora et la consultation de ses synthèses.
+
+![Interface Atelier avec la scène 3D, les fiches des agents et le chat de Nora](docs/images/interface-chat.png)
+
+</details>
+
+<details>
+<summary>Équipe extensible et postes supplémentaires</summary>
+
+L’arrivée d’un spécialiste ajoute son profil et son poste dans le bureau. Cette capture montre une équipe de cinq agents avec Camille.
+
+![Équipe de cinq agents avec Camille et son poste dans le bureau extensible](docs/images/equipe-extensible.png)
+
+</details>
+
+<details>
+<summary>Connexions Gmail, GitHub et MCP — mode local</summary>
+
+Les réglages permettent de découvrir les services de Claude Code et de choisir ceux disponibles pour l’équipe. La connexion à un compte et l’activation de ses outils restent deux étapes distinctes.
+
+![Panneau Comptes et MCP avec les cartes Gmail et GitHub et la liste des outils détectés](docs/images/connexions-mcp.png)
+
+</details>
+
 ## Sommaire
 
+- [Captures d’écran](#captures-décran)
 - [Fonctionnalités](#fonctionnalités)
 - [Fonctionnement des missions](#fonctionnement-des-missions)
 - [Prérequis](#prérequis)
