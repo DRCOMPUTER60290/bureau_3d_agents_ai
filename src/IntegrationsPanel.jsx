@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Mail,Github,Plug,Trash2,RotateCcw,ShieldCheck} from 'lucide-react';
+import {Mail,GitBranch as Github,Plug,Trash2,RotateCcw,ShieldCheck} from 'lucide-react';
 async function api(url,method='GET',body){const r=await fetch(url,{method,headers:{'Content-Type':'application/json'},...(body!==undefined?{body:JSON.stringify(body)}:{})});const data=await r.json();if(!r.ok)throw Error(data.error||'La demande a échoué.');return data;}
 const statusName={connected:'Connecté',failed:'Connexion en échec','needs-auth':'Connexion à autoriser',pending:'Connexion en cours',disabled:'Désactivé','not-tested':'Détecté · à vérifier'};
 export function IntegrationsPanel({refresh}){

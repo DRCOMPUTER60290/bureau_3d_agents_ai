@@ -4,6 +4,8 @@ Un bureau virtuel pour piloter une équipe d’agents IA depuis une barre de cha
 
 Le moteur IA utilise **le compte Claude connecté à Claude Code**, avec les limites de son abonnement. Aucune clé API Anthropic n’est nécessaire pour ce mode. Le projet est une application locale personnelle, avec des réponses Claude réelles et des animations stylisées.
 
+**Version cloud :** un bureau privé peut maintenant transmettre les missions à une tâche Claude Code cloud et recevoir ses plans, recrutements, contributions et synthèses. Le panneau **Consommation** présente les tokens mesurés et les limites officielles de cinq heures et de la semaine lorsqu’elles sont disponibles. Voir le [guide cloud et suivi d’usage](docs/CLOUD.md).
+
 ## Sommaire
 
 - [Fonctionnalités](#fonctionnalités)
@@ -295,9 +297,9 @@ Un accès public nécessite notamment authentification, HTTPS, gestion des accè
 
 ### Claude Code cloud
 
-L’intégration livrée utilise **Claude Code sur la machine qui exécute le serveur**. Les sessions cloud et tâches cloud planifiées ne sont pas encore intégrées.
+La version locale continue d’utiliser Claude Code sur votre machine. Une version hébergée séparée utilise maintenant **une tâche Claude Code cloud liée à votre abonnement**, avec un déclencheur officiel et un retour HTTPS authentifié. Les missions cloud continuent sans votre PC et les résultats restent dans le stockage D1 du bureau hébergé.
 
-Anthropic propose des [sessions cloud](https://code.claude.com/docs/en/claude-code-on-the-web) et des [tâches cloud planifiées ou déclenchées](https://code.claude.com/docs/en/routines). Une évolution pourrait leur transmettre les missions en hébergeant séparément le bureau 3D. Le déclenchement, le retour des résultats, les états et les autorisations demandent une adaptation ; ce n’est pas un simple changement de variable. Les sessions cloud ne constituent pas un hébergement permanent du serveur du studio.
+Cette première intégration cloud produit des livrables textuels ; elle ne transfère pas les MCP locaux ou les autorisations du bureau local. Le jeton de routine est distinct d’une clé API Anthropic. Le serveur ne relance jamais automatiquement un déclenchement dont le résultat est incertain, car l’API officielle ne fournit pas de clé d’idempotence. Voir les [étapes de configuration et limites du cloud](docs/CLOUD.md).
 
 ## Architecture
 
@@ -382,7 +384,8 @@ Ce script consomme un appel Claude du compte et vérifie une validation pour un 
 - Rendu stylisé et animation procédurale ; pas de personnages photoréalistes ni de capture de mouvement.
 - Les déplacements et pauses donnent vie à l’équipe ; ils ne constituent pas du travail IA permanent.
 - Contributions et missions séquentielles, sans conversation vocale ni processus autonome permanent par agent.
-- Pas de planification récurrente, d’intégration Claude Code cloud ou de supervision 24 h/24 intégrée.
+- Pas de planification récurrente de missions depuis le bureau ni de supervision illimitée : les tâches cloud utilisent les quotas de l’abonnement.
+- Les missions cloud de cette version sont textuelles ; les MCP du mode local ne sont pas disponibles automatiquement dans le cloud.
 - Chaque appel MCP demande une validation humaine : le fonctionnement n’est pas entièrement sans surveillance.
 - Stockage JSON prévu pour une instance et un usage personnel local ; pas de gestion multiutilisateur.
 - Aucun accès automatique aux outils système de shell ou d’édition de fichiers pour les agents du studio.

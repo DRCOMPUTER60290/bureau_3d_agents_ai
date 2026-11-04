@@ -8,6 +8,8 @@ import {gatherMeeting,recordArrival} from './meetings.js';
 import {initialAgents,MAX_AGENTS,executeTask} from './team.js';
 import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
 import path from 'node:path';
+import {recordUsage,usageSummary} from './usage.js';
+import {readAccountUsage} from './usage-reader.js';
 const app=express();app.use(express.json({limit:'16kb'}));
 const file=path.resolve(process.env.ATELIER_DATA_FILE||'data/state.json');await mkdir(path.dirname(file),{recursive:true});
 let state={tasks:[],messages:[],agents:structuredClone(initialAgents)};
@@ -18,9 +20,20 @@ for(const task of state.tasks)if(task.status==='working')task.status='queued';
 let saving=Promise.resolve();
 function save(){const snapshot=JSON.stringify(state);saving=saving.catch(()=>{}).then(async()=>{await writeFile(file+'.tmp',snapshot);await rename(file+'.tmp',file);});return saving;}
 await save();
-const approvals=new ApprovalQueue();const integrations=new Integrations({state,save,approvals});await integrations.initialize();
+async function onUsage(result,context){recordUsage(state,result,context);await save();}
+let usageReading=null,usageReadAt=0;
+async function refreshUsage(){
+  if(usageReading)return usageReading;
+  if(Date.now()-usageReadAt<60000)return usageSummary(state);
+  usageReading=(async()=>{try{state.usage??={records:[]};state.usage.limits=await readAccountUsage();state.usage.lastError=null;}catch(error){state.usage??={records:[]};state.usage.lastError=error.message;}finally{usageReadAt=Date.now();await save();}return usageSummary(state);})();
+  try{return await usageReading;}finally{usageReading=null;}
+}
+const approvals=new ApprovalQueue();const integrations=new Integrations({state,save,approvals,onUsage});await integrations.initialize();
 const live=process.env.ATELIER_DEMO!=='1';let connection=await getConnection();let running=false;
 app.get('/api/state',(_,res)=>res.json({...state,mode:live?'live':'demo',connection,busy:running,maxAgents:MAX_AGENTS,pendingApprovals:approvals.list()}));
+app.get('/api/usage',(_,res)=>res.json(usageSummary(state)));
+app.post('/api/usage/refresh',async(_,res)=>res.json(await refreshUsage()));
+app.get('/api/cloud/config',(_,res)=>res.json({hosted:false,publicUrl:process.env.ATELIER_CLOUD_URL||''}));
 
 app.delete('/api/agents/:id',async(req,res)=>{try{removeAgent(state,req.params.id);await save();res.json({ok:true});}catch(e){res.status(409).json({error:e.message});}});
 app.post('/api/agents/:id/restore',async(req,res)=>{try{restoreAgent(state,req.params.id,MAX_AGENTS);await save();res.json({ok:true});}catch(e){res.status(409).json({error:e.message});}});
@@ -46,7 +59,7 @@ async function work(){
   try{for(let task;(task=state.tasks.find(t=>t.status==='queued'));){
     task.status='working';task.error=null;await save();
     try{
-      if(live){await integrations.ensureAvailable();await executeTask(state,task,{ask:(system,prompt,context)=>integrations.ask(system,prompt,context),plan:(prompt,agents,history)=>planClaude(prompt,agents.map(a=>({...a,services:integrations.availableFor(a.id).map(e=>e.name)})),history),save,coordinateMeeting:gatherMeeting});}
+      if(live){await integrations.ensureAvailable();await executeTask(state,task,{ask:(system,prompt,context)=>integrations.ask(system,prompt,context),plan:(prompt,agents,history)=>planClaude(prompt,agents.map(a=>({...a,services:integrations.availableFor(a.id).map(e=>e.name)})),history,{onResult:result=>onUsage(result,{taskId:task.id,agentId:'boss'})}),save,coordinateMeeting:gatherMeeting});}
       else{await new Promise(r=>setTimeout(r,1200));task.result='Démonstration visuelle uniquement. Aucune création d’agent ni réponse Claude réelle dans ce mode.';}
       task.status='done';state.messages.push({role:'assistant',text:task.result,taskId:task.id});
     }catch(e){task.status='error';if(task.meeting)task.meeting.status='finished';task.error=e.message;state.messages.push({role:'assistant',text:e.message,taskId:task.id});}
@@ -54,4 +67,4 @@ async function work(){
   }}finally{running=false;}
 }
 app.use(express.static(path.resolve('dist')));
-app.listen(Number(process.env.PORT)||3001,'127.0.0.1',()=>{console.log('Atelier : http://127.0.0.1:'+(process.env.PORT||3001));void work();});
+app.listen(Number(process.env.PORT)||3001,'127.0.0.1',()=>{console.log('Atelier : http://127.0.0.1:'+(process.env.PORT||3001));void work();if(live&&connection.connected)void refreshUsage();});

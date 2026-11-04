@@ -18,3 +18,6 @@ data/
 
 # Captures locales de developpement, hors documentation publique
 /*.png
+.atelier-*.json
+# Le site publie possede son propre depot prive gere par Sites.
+/cloud-site/

@@ -9,7 +9,7 @@ export function subscriptionEnvironment(source = process.env) {
   return env;
 }
 
-export function runClaude(args, input = '', { timeout = 180000, launch = spawn } = {}) {
+export function runClaude(args, input = '', { timeout = 180000, launch = spawn, onResult } = {}) {
   return new Promise((resolve, reject) => {
     const child = launch(process.env.CLAUDE_CODE_PATH || 'claude', args, {
       shell: false, windowsHide: true, env: subscriptionEnvironment(), stdio: ['pipe', 'pipe', 'pipe'],
@@ -36,7 +36,7 @@ export function runClaude(args, input = '', { timeout = 180000, launch = spawn }
     child.stdin.on('error', () => {});
     child.on('close', code => {
       if (code !== 0) return finish(new Error('Claude Code a échoué. Vérifiez la session et les limites de votre abonnement dans le terminal.'));
-      try { finish(null, JSON.parse(stdout)); }
+      try { const result=JSON.parse(stdout);Promise.resolve(onResult?.(result)).then(()=>finish(null,result),()=>finish(null,result)); }
       catch { finish(new Error('La réponse de Claude Code est illisible.')); }
     });
     child.stdin.end(input);
@@ -64,11 +64,12 @@ export async function askClaude(system, prompt, options) {
   return response.result;
 }
 
-export async function planClaude(prompt,agents,history=[]){
+export async function planClaude(prompt,agents,history=[],options){
   const {planSchema,MAX_AGENTS}=await import('./team.js');
   const system=`Tu es Nora, patronne du studio. Tu peux réellement créer des agents via ce plan structuré : le studio les enregistre et construit leur bureau. Réponds uniquement selon le schéma. Réutilise les compétences existantes ; crée les spécialistes manquants si nécessaire ou si demandé explicitement, au plus six par demande et ${MAX_AGENTS} au total. Choisis des prénoms uniques. Pour une demande de création ou de discussion sans livrable, kind=team et assignments=[] : réponds directement via reply. Pour une mission, kind=mission et sélectionne entre un et six experts utiles seulement. Les références des nouveaux agents sont new-0, new-1, etc. Les autres agentId viennent du roster. Ne délègue pas à boss. Chaque consigne doit être précise. Si une discussion commune, une revue ou une réunion est demandée, ou nécessaire pour coordonner les experts, renseigne meeting.needed=true, meeting.topic, et meeting.participants avec les identifiants des experts présents (maximum six, tous doivent aussi recevoir une assignment). Nora sera automatiquement ajoutée. Une demande de réunion est une mission, pas une simple modification d’équipe. Sinon meeting.needed=false et participants=[]. Chaque agent indique ses services MCP disponibles. Pour une mission externe, délègue en priorité à un spécialiste qui possède le service correspondant ; il devra obtenir une validation humaine avant chaque appel. Sans service adapté, explique la connexion manquante sans prétendre avoir accédé aux données. Ne promets aucune action non réalisée ni disponibilité illimitée.`;
   const args=['-p','--output-format','json','--model',process.env.CLAUDE_MODEL||'sonnet','--safe-mode','--strict-mcp-config','--tools','','--no-session-persistence','--system-prompt',system,'--json-schema',JSON.stringify(planSchema)];
-  const response=await runClaude(args,JSON.stringify({request:prompt,agents:agents.map(({id,name,role,services})=>({id,name,role,services:services||[]})),recentConversation:history.map(({role,text})=>({role,text:text.slice(0,4000)}))}));
+  const payload={request:prompt,agents:agents.map(({id,name,role,services})=>({id,name,role,services:services||[]})),recentConversation:history.map(({role,text})=>({role,text:text.slice(0,4000)}))};
+  const response=await runClaude(args,JSON.stringify(payload),options);
   if(response.is_error||!response.structured_output)throw Error('Nora n’a pas pu produire un plan structuré. Aucune création effectuée. Vérifiez les limites de Claude Code.');
   return response.structured_output;
 }
