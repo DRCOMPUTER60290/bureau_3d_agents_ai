@@ -1,5 +1,7 @@
 # Claude Code cloud et suivi d’usage
 
+Un [prompt prêt à donner à Claude Code](../PROMPT_CONFIGURATION_CLAUDE_CLOUD.md) accompagne ce guide. Il réutilise la configuration existante et détaille les étapes de connexion et de vérification.
+
 Le bureau propose deux exécutions distinctes : le serveur local avec Claude Code et ses MCP, et un bureau hébergé privé qui délègue les missions à Claude Code cloud. La fermeture du PC n’affecte pas une mission déjà envoyée depuis le bureau hébergé. La version locale reste disponible.
 
 ## Compte et hébergement

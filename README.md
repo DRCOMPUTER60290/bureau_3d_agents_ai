@@ -6,6 +6,8 @@ Le moteur IA utilise **le compte Claude connecté à Claude Code**, avec les lim
 
 **Version cloud :** un bureau privé peut maintenant transmettre les missions à une tâche Claude Code cloud et recevoir ses plans, recrutements, contributions et synthèses. Le panneau **Consommation** présente les tokens mesurés et les limites officielles de cinq heures et de la semaine lorsqu’elles sont disponibles. Voir le [guide cloud et suivi d’usage](docs/CLOUD.md).
 
+Pour demander à Claude Code de vérifier ou configurer cette connexion, utilise le [prompt de configuration cloud prêt à copier](PROMPT_CONFIGURATION_CLAUDE_CLOUD.md).
+
 ## Sommaire
 
 - [Fonctionnalités](#fonctionnalités)
